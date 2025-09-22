@@ -220,7 +220,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 - 📖 [Documentation](docs/)
-- 🐛 [Issues](https://github.com/your-org/enterprise-soc-blueprint/issues)
+- 🐛 [Issues](https://github.com/bunnyhp/enterprise-soc-blueprint/issues)
 - 💬 [Discussions](https://github.com/your-org/enterprise-soc-blueprint/discussions)
 
 ---
