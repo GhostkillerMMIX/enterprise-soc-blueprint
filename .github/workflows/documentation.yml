@@ -1,0 +1,327 @@
+name: Documentation Build and Deploy
+
+on:
+  push:
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - '.github/workflows/documentation.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Job 1: Documentation Validation
+  docs-validation:
+    name: Documentation Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install documentation tools
+        run: |
+          pip install mkdocs
+          pip install mkdocs-material
+          pip install mkdocs-mermaid2-plugin
+          pip install markdown-link-check
+
+      - name: Validate Markdown syntax
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'yes'
+          config-file: '.github/markdown-link-check-config.json'
+        continue-on-error: true
+
+      - name: Check documentation structure
+        run: |
+          echo "Checking documentation structure..."
+          
+          # Required documentation files
+          required_docs=(
+            "README.md"
+            "CONTRIBUTING.md" 
+            "SECURITY.md"
+            "docs/architecture/system-overview.md"
+            "docs/deployment-guides/01-infrastructure-setup.md"
+            "docs/deployment-guides/02-splunk-deployment.md"
+          )
+          
+          for doc in "${required_docs[@]}"; do
+            if [ -f "$doc" ]; then
+              echo "✓ $doc exists"
+            else
+              echo "✗ Required documentation missing: $doc"
+              exit 1
+            fi
+          done
+
+      - name: Validate documentation completeness
+        run: |
+          echo "Validating documentation completeness..."
+          
+          # Check for TODO markers
+          todo_count=$(grep -r -i "TODO\|FIXME\|XXX" docs/ | wc -l)
+          echo "Found $todo_count TODO markers in documentation"
+          
+          # Check for broken internal links
+          echo "Checking internal links..."
+          find docs/ -name "*.md" -exec grep -l "\[.*\](.*\.md)" {} \; | while read file; do
+            echo "Checking links in $file"
+            grep -o "\[.*\]([^)]*\.md[^)]*)" "$file" | while read link; do
+              target=$(echo "$link" | sed 's/.*(\([^)]*\)).*/\1/')
+              if [[ "$target" =~ ^http ]]; then
+                continue  # Skip external links
+              fi
+              
+              # Resolve relative path
+              base_dir=$(dirname "$file")
+              if [ -f "$base_dir/$target" ] || [ -f "$target" ]; then
+                echo "  ✓ Link valid: $target"
+              else
+                echo "  ✗ Broken link: $target in $file"
+              fi
+            done
+          done
+
+      - name: Check code examples in documentation
+        run: |
+          echo "Validating code examples in documentation..."
+          
+          # Extract and validate shell commands
+          grep -r -A 5 -B 1 '```bash' docs/ | grep -v '^--$' | while read line; do
+            if [[ "$line" =~ ^\`\`\`bash ]]; then
+              echo "Found bash code block"
+            fi
+          done
+          
+          # Extract and validate Terraform examples
+          grep -r -A 10 -B 1 '```hcl\|```terraform' docs/ | grep -v '^--$' > terraform_examples.txt
+          echo "Found $(grep -c '```' terraform_examples.txt) Terraform examples"
+
+  # Job 2: Generate API Documentation
+  api-docs:
+    name: Generate API Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Generate Terraform documentation
+        run: |
+          echo "Generating Terraform module documentation..."
+          
+          # Install terraform-docs
+          curl -sSLo terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/download/v0.16.0/terraform-docs-v0.16.0-linux-amd64.tar.gz
+          tar -xzf terraform-docs.tar.gz
+          chmod +x terraform-docs
+          
+          # Generate docs for each Terraform module
+          mkdir -p generated-docs/terraform
+          
+          for tf_dir in infrastructure/terraform infrastructure/terraform/instances; do
+            if [ -d "$tf_dir" ] && [ "$(ls -A $tf_dir/*.tf 2>/dev/null)" ]; then
+              module_name=$(basename "$tf_dir")
+              echo "Generating docs for $module_name"
+              ./terraform-docs markdown table "$tf_dir" > "generated-docs/terraform/${module_name}.md"
+            fi
+          done
+
+      - name: Generate Ansible documentation
+        run: |
+          echo "Generating Ansible role documentation..."
+          
+          mkdir -p generated-docs/ansible
+          
+          for role in infrastructure/ansible/roles/*/; do
+            role_name=$(basename "$role")
+            echo "Generating docs for role: $role_name"
+            
+            cat > "generated-docs/ansible/${role_name}.md" << EOF
+          # Ansible Role: $role_name
+          
+          ## Description
+          $(grep -h "description:" "$role/meta/main.yml" 2>/dev/null | sed 's/description: //' || echo "Ansible role for $role_name")
+          
+          ## Tasks
+          $(grep -h "name:" "$role/tasks/main.yml" 2>/dev/null | sed 's/- name: /- /' || echo "No tasks documented")
+          
+          ## Variables
+          $(grep -h "^[a-zA-Z].*:" "$role/defaults/main.yml" 2>/dev/null | sed 's/: .*//' | sed 's/^/- /' || echo "No variables documented")
+          
+          ## Handlers
+          $(grep -h "name:" "$role/handlers/main.yml" 2>/dev/null | sed 's/- name: /- /' || echo "No handlers documented")
+          EOF
+          done
+
+      - name: Upload generated documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated-documentation
+          path: generated-docs/
+          retention-days: 30
+
+  # Job 3: Documentation Deployment (GitHub Pages)
+  deploy-docs:
+    name: Deploy Documentation to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [docs-validation, api-docs]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install MkDocs
+        run: |
+          pip install mkdocs
+          pip install mkdocs-material
+          pip install mkdocs-mermaid2-plugin
+
+      - name: Create MkDocs configuration
+        run: |
+          cat > mkdocs.yml << EOF
+          site_name: Enterprise SOC Implementation
+          site_description: Production-ready SOC implementation with Splunk, SOAR automation, and MITRE ATT&CK detection rules
+          site_url: https://bunnyhp.github.io/enterprise-soc-blueprint
+          
+          theme:
+            name: material
+            palette:
+              - scheme: default
+                primary: blue
+                accent: blue
+                toggle:
+                  icon: material/brightness-7
+                  name: Switch to dark mode
+              - scheme: slate
+                primary: blue
+                accent: blue
+                toggle:
+                  icon: material/brightness-4
+                  name: Switch to light mode
+            features:
+              - navigation.tabs
+              - navigation.sections
+              - navigation.expand
+              - navigation.top
+              - search.highlight
+              - content.code.copy
+          
+          plugins:
+            - search
+            - mermaid2
+          
+          nav:
+            - Home: index.md
+            - Architecture: 
+              - Overview: architecture/system-overview.md
+            - Deployment Guides:
+              - Infrastructure Setup: deployment-guides/01-infrastructure-setup.md
+              - Splunk Deployment: deployment-guides/02-splunk-deployment.md
+            - Contributing: CONTRIBUTING.md
+            - Security: SECURITY.md
+          
+          markdown_extensions:
+            - admonition
+            - codehilite
+            - pymdownx.superfences:
+                custom_fences:
+                  - name: mermaid
+                    class: mermaid
+                    format: !!python/name:mermaid2.fence_mermaid
+          EOF
+
+      - name: Copy documentation files
+        run: |
+          # Create docs structure for MkDocs
+          mkdir -p docs_site
+          cp README.md docs_site/index.md
+          cp -r docs/* docs_site/
+          cp CONTRIBUTING.md docs_site/
+          cp SECURITY.md docs_site/
+
+      - name: Download generated documentation
+        uses: actions/download-artifact@v3
+        with:
+          name: generated-documentation
+          path: docs_site/generated/
+
+      - name: Build documentation
+        run: mkdocs build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: site/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+
+  # Job 4: Documentation Quality Check
+  docs-quality:
+    name: Documentation Quality Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check documentation metrics
+        run: |
+          echo "Documentation Quality Metrics"
+          echo "=============================="
+          
+          # Count documentation files
+          doc_count=$(find docs/ -name "*.md" | wc -l)
+          echo "Documentation files: $doc_count"
+          
+          # Count total lines of documentation
+          total_lines=$(find docs/ -name "*.md" -exec wc -l {} \; | awk '{sum += $1} END {print sum}')
+          echo "Total documentation lines: $total_lines"
+          
+          # Check for images/diagrams
+          image_count=$(find docs/ -name "*.png" -o -name "*.jpg" -o -name "*.svg" | wc -l)
+          echo "Images/diagrams: $image_count"
+          
+          # Check README quality
+          readme_lines=$(wc -l < README.md)
+          echo "README.md lines: $readme_lines"
+          
+          # Quality assessment
+          if [ "$doc_count" -ge 5 ] && [ "$total_lines" -ge 1000 ]; then
+            echo "✅ Documentation quality: Excellent"
+          elif [ "$doc_count" -ge 3 ] && [ "$total_lines" -ge 500 ]; then
+            echo "✓ Documentation quality: Good"
+          else
+            echo "⚠ Documentation quality: Needs improvement"
+          fi

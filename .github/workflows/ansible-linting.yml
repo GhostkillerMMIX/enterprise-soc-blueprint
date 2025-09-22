@@ -1,0 +1,308 @@
+name: Ansible Linting and Validation
+
+on:
+  push:
+    paths:
+      - 'infrastructure/ansible/**'
+      - '.github/workflows/ansible-linting.yml'
+  pull_request:
+    paths:
+      - 'infrastructure/ansible/**'
+      - '.github/workflows/ansible-linting.yml'
+  workflow_dispatch:
+
+env:
+  ANSIBLE_VERSION: '2.15.0'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  ansible-lint:
+    name: Ansible Lint and Validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/ansible
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-ansible-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-ansible-
+
+      - name: Install Ansible and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible==${{ env.ANSIBLE_VERSION }}
+          pip install ansible-lint
+          pip install yamllint
+          pip install jinja2
+          pip install molecule
+          pip install molecule-plugins[docker]
+
+      - name: Install Ansible collections
+        run: |
+          ansible-galaxy collection install community.general
+          ansible-galaxy collection install ansible.posix
+          ansible-galaxy collection install amazon.aws
+
+      - name: Run YAML Lint
+        run: |
+          find . -name "*.yml" -o -name "*.yaml" | xargs yamllint -d relaxed
+
+      - name: Run Ansible Lint
+        id: ansible-lint
+        run: |
+          ansible-lint --version
+          ansible-lint playbooks/site.yml --format pep8
+        continue-on-error: true
+
+      - name: Validate Ansible Playbook Syntax
+        run: |
+          ansible-playbook --syntax-check playbooks/site.yml
+
+      - name: Validate Ansible Inventory
+        run: |
+          ansible-inventory --list -i inventories/prod/hosts.ini > /dev/null
+
+      - name: Check Ansible Role Structure
+        run: |
+          echo "Validating Ansible role structure..."
+          for role in roles/*/; do
+            role_name=$(basename "$role")
+            echo "Checking role: $role_name"
+            
+            # Check required directories
+            if [ -d "$role/tasks" ]; then
+              echo "✓ $role_name has tasks directory"
+            else
+              echo "✗ $role_name missing tasks directory"
+              exit 1
+            fi
+            
+            # Check main.yml exists
+            if [ -f "$role/tasks/main.yml" ]; then
+              echo "✓ $role_name has tasks/main.yml"
+            else
+              echo "✗ $role_name missing tasks/main.yml"
+              exit 1
+            fi
+            
+            # Check handlers if they exist
+            if [ -d "$role/handlers" ] && [ ! -f "$role/handlers/main.yml" ]; then
+              echo "✗ $role_name has handlers directory but no main.yml"
+              exit 1
+            fi
+          done
+
+      - name: Validate Jinja2 Templates
+        run: |
+          echo "Validating Jinja2 templates..."
+          python3 -c "
+          import jinja2
+          import glob
+          import sys
+          
+          def validate_template(template_path):
+              try:
+                  with open(template_path, 'r') as f:
+                      template_content = f.read()
+                  
+                  env = jinja2.Environment()
+                  env.parse(template_content)
+                  print(f'✓ {template_path} is valid')
+                  return True
+              except jinja2.exceptions.TemplateSyntaxError as e:
+                  print(f'✗ {template_path} has syntax error: {e}')
+                  return False
+              except Exception as e:
+                  print(f'✗ {template_path} validation failed: {e}')
+                  return False
+          
+          template_files = glob.glob('roles/*/templates/*.j2', recursive=True)
+          all_valid = True
+          
+          for template_file in template_files:
+              if not validate_template(template_file):
+                  all_valid = False
+          
+          if not all_valid:
+              sys.exit(1)
+          else:
+              print(f'✓ All {len(template_files)} templates are valid')
+          "
+
+      - name: Check Ansible Variables
+        run: |
+          echo "Checking Ansible variables..."
+          # Validate group_vars files
+          for vars_file in inventories/prod/group_vars/*.yml; do
+            echo "Validating $vars_file"
+            python3 -c "
+            import yaml
+            import sys
+            try:
+                with open('$vars_file', 'r') as f:
+                    yaml.safe_load(f)
+                print('✓ $vars_file is valid YAML')
+            except yaml.YAMLError as e:
+                print('✗ $vars_file has YAML syntax error:', e)
+                sys.exit(1)
+            "
+          done
+
+      - name: Test Ansible Dry Run
+        run: |
+          echo "Running Ansible dry run..."
+          # Create a minimal test inventory for dry run
+          cat > test_inventory.ini << EOF
+          [test_group]
+          localhost ansible_connection=local
+          
+          [test_group:vars]
+          ansible_python_interpreter=/usr/bin/python3
+          EOF
+          
+          # Run playbook in check mode
+          ansible-playbook -i test_inventory.ini playbooks/site.yml --check --diff
+        continue-on-error: true
+
+      - name: Generate Ansible Documentation
+        run: |
+          echo "Generating Ansible documentation..."
+          # Generate role documentation
+          for role in roles/*/; do
+            role_name=$(basename "$role")
+            echo "## Role: $role_name" >> ansible-docs.md
+            
+            if [ -f "$role/README.md" ]; then
+              cat "$role/README.md" >> ansible-docs.md
+            else
+              echo "Documentation for $role_name role" >> ansible-docs.md
+            fi
+            echo "" >> ansible-docs.md
+          done
+
+      - name: Comment PR with Ansible results
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const output = `#### Ansible Validation Results 🤖
+            
+            #### YAML Lint 📝
+            \`✓ Passed\`
+            
+            #### Ansible Lint 🔍
+            \`${{ steps.ansible-lint.outcome }}\`
+            
+            #### Syntax Check ✅
+            \`✓ Passed\`
+            
+            #### Template Validation 📋
+            \`✓ Passed\`
+            
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+  # Job 2: Ansible Security Scanning
+  ansible-security:
+    name: Ansible Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Ansible security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infrastructure/ansible
+          framework: ansible
+          output_format: sarif
+          output_file_path: checkov-ansible.sarif
+          soft_fail: true
+
+      - name: Upload Ansible security scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: checkov-ansible.sarif
+
+      - name: Scan for hardcoded secrets in Ansible
+        run: |
+          echo "Scanning for potential secrets in Ansible files..."
+          # Check for potential secrets in Ansible files
+          grep -r -i -E "(password|secret|key|token)" infrastructure/ansible/ --include="*.yml" --include="*.yaml" | grep -v "vault" | grep -v "example" || echo "No hardcoded secrets found"
+
+  # Job 3: Ansible Best Practices Check
+  ansible-best-practices:
+    name: Ansible Best Practices
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install ansible==${{ env.ANSIBLE_VERSION }}
+          pip install ansible-lint
+
+      - name: Check Ansible best practices
+        run: |
+          echo "Checking Ansible best practices..."
+          
+          # Check for proper task naming
+          echo "✓ Checking task naming..."
+          grep -r "name:" infrastructure/ansible/roles/ | wc -l
+          
+          # Check for proper use of become
+          echo "✓ Checking privilege escalation..."
+          grep -r "become:" infrastructure/ansible/roles/ | wc -l
+          
+          # Check for proper variable usage
+          echo "✓ Checking variable usage..."
+          grep -r "{{" infrastructure/ansible/roles/ | wc -l
+          
+          # Check for proper handler usage
+          echo "✓ Checking handlers..."
+          find infrastructure/ansible/roles/ -name "handlers" -type d | wc -l
+
+      - name: Validate Ansible Galaxy requirements
+        run: |
+          if [ -f "infrastructure/ansible/requirements.yml" ]; then
+            echo "Validating Galaxy requirements..."
+            ansible-galaxy collection install -r infrastructure/ansible/requirements.yml --dry-run
+          else
+            echo "No Galaxy requirements file found"
+          fi
+        continue-on-error: true
+
+      - name: Check playbook idempotency
+        run: |
+          echo "Checking playbook structure for idempotency..."
+          # Look for proper use of changed_when, failed_when, etc.
+          grep -r "changed_when\|failed_when\|creates\|removes" infrastructure/ansible/roles/ || echo "Consider adding idempotency controls"

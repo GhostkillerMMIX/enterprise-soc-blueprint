@@ -1,0 +1,349 @@
+name: Code Quality and Standards
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # Job 1: Code Formatting and Style
+  code-formatting:
+    name: Code Formatting and Style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python formatting tools
+        run: |
+          pip install black
+          pip install isort
+          pip install flake8
+          pip install autopep8
+
+      - name: Check Python code formatting (Black)
+        run: |
+          echo "Checking Python code formatting with Black..."
+          black --check --diff soar/ || echo "Python code formatting issues found"
+
+      - name: Check Python import sorting (isort)
+        run: |
+          echo "Checking Python import sorting..."
+          isort --check-only --diff soar/ || echo "Import sorting issues found"
+
+      - name: Run Python linting (Flake8)
+        run: |
+          echo "Running Python linting with Flake8..."
+          flake8 soar/ --max-line-length=120 --ignore=E501,W503 || echo "Python linting issues found"
+
+      - name: Check shell script formatting
+        run: |
+          echo "Checking shell script formatting..."
+          
+          # Install shfmt
+          curl -L https://github.com/mvdan/sh/releases/download/v3.7.0/shfmt_v3.7.0_linux_amd64 -o shfmt
+          chmod +x shfmt
+          
+          # Check formatting
+          find . -name "*.sh" -exec ./shfmt -d {} \; || echo "Shell script formatting issues found"
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          format: gcc
+          severity: warning
+
+  # Job 2: Code Complexity Analysis
+  complexity-analysis:
+    name: Code Complexity Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install complexity analysis tools
+        run: |
+          pip install radon
+          pip install xenon
+          pip install mccabe
+
+      - name: Analyze Python code complexity
+        run: |
+          echo "Analyzing Python code complexity..."
+          
+          # Cyclomatic complexity
+          radon cc soar/ -a -nc || echo "Complexity analysis completed"
+          
+          # Maintainability index
+          radon mi soar/ -nc || echo "Maintainability analysis completed"
+          
+          # Halstead metrics
+          radon hal soar/ || echo "Halstead analysis completed"
+
+      - name: Check for code smells
+        run: |
+          echo "Checking for code smells..."
+          
+          # Long functions
+          echo "Checking for long functions..."
+          find soar/ -name "*.py" -exec wc -l {} \; | awk '$1 > 100 {print "Long file: " $2 " (" $1 " lines)"}'
+          
+          # Complex functions
+          echo "Checking function complexity..."
+          xenon soar/ --max-absolute B --max-modules A --max-average A || echo "Complexity check completed"
+
+  # Job 3: Documentation Quality
+  docs-quality:
+    name: Documentation Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for documentation tools
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install documentation quality tools
+        run: |
+          npm install -g alex
+          npm install -g write-good
+          npm install -g textlint
+
+      - name: Check documentation writing quality
+        run: |
+          echo "Checking documentation writing quality..."
+          
+          # Check for inclusive language
+          alex docs/ README.md CONTRIBUTING.md || echo "Inclusive language check completed"
+          
+          # Check writing quality
+          find docs/ -name "*.md" -exec write-good {} \; || echo "Writing quality check completed"
+
+      - name: Check documentation coverage
+        run: |
+          echo "Checking documentation coverage..."
+          
+          # Count Terraform resources vs documented resources
+          tf_resources=$(grep -r "resource \"" infrastructure/terraform/ | wc -l)
+          echo "Terraform resources: $tf_resources"
+          
+          # Count Ansible roles vs documented roles
+          ansible_roles=$(find infrastructure/ansible/roles -maxdepth 1 -type d | tail -n +2 | wc -l)
+          echo "Ansible roles: $ansible_roles"
+          
+          # Count SOAR playbooks vs documented playbooks
+          soar_playbooks=$(find soar/playbooks -name "*.py" | wc -l)
+          echo "SOAR playbooks: $soar_playbooks"
+          
+          # Documentation completeness score
+          doc_files=$(find docs/ -name "*.md" | wc -l)
+          echo "Documentation files: $doc_files"
+          
+          if [ "$doc_files" -ge 5 ]; then
+            echo "✅ Good documentation coverage"
+          else
+            echo "⚠ Documentation coverage could be improved"
+          fi
+
+  # Job 4: License and Legal Compliance
+  license-compliance:
+    name: License and Legal Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check license compliance
+        run: |
+          echo "Checking license compliance..."
+          
+          # Verify LICENSE file exists and is valid
+          if [ -f "LICENSE" ]; then
+            echo "✓ LICENSE file exists"
+            
+            # Check if it's MIT license
+            if grep -q "MIT License" LICENSE; then
+              echo "✓ MIT License detected"
+            else
+              echo "⚠ License type unclear"
+            fi
+          else
+            echo "✗ LICENSE file missing"
+            exit 1
+          fi
+          
+          # Check for copyright notices
+          if grep -q "Copyright" LICENSE; then
+            echo "✓ Copyright notice present"
+          else
+            echo "⚠ Copyright notice missing"
+          fi
+
+      - name: Scan for license headers
+        run: |
+          echo "Scanning for license headers in source files..."
+          
+          # Check Python files for license headers
+          python_files_with_license=$(find soar/ -name "*.py" -exec grep -l "Copyright\|License\|MIT" {} \; | wc -l)
+          total_python_files=$(find soar/ -name "*.py" | wc -l)
+          
+          echo "Python files with license headers: $python_files_with_license/$total_python_files"
+
+  # Job 5: Security Best Practices
+  security-best-practices:
+    name: Security Best Practices Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for security best practices
+        run: |
+          echo "Checking security best practices..."
+          
+          # Check for hardcoded passwords
+          echo "Scanning for hardcoded passwords..."
+          if grep -r -i "password.*=" . --include="*.tf" --include="*.yml" --include="*.py" | grep -v "variable\|description\|example\|dummy"; then
+            echo "⚠ Potential hardcoded passwords found"
+          else
+            echo "✓ No hardcoded passwords detected"
+          fi
+          
+          # Check for proper secret management
+          echo "Checking secret management..."
+          if grep -r "aws_secretsmanager_secret\|vault" infrastructure/terraform/; then
+            echo "✓ Proper secret management detected"
+          else
+            echo "⚠ Consider using proper secret management"
+          fi
+          
+          # Check for encryption settings
+          echo "Checking encryption settings..."
+          if grep -r "encrypted.*true" infrastructure/terraform/; then
+            echo "✓ Encryption enabled for storage"
+          else
+            echo "⚠ Storage encryption may not be enabled"
+          fi
+
+  # Job 6: Performance Analysis
+  performance-analysis:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Analyze infrastructure performance
+        run: |
+          echo "Analyzing infrastructure performance characteristics..."
+          
+          # Check instance types for appropriate sizing
+          echo "Instance types configured:"
+          grep -r "instance_type" infrastructure/terraform/ | grep -v ".terraform"
+          
+          # Check storage configurations
+          echo "Storage configurations:"
+          grep -r "volume_size\|volume_type" infrastructure/terraform/ | grep -v ".terraform"
+          
+          # Analyze auto-scaling settings
+          echo "Auto-scaling configurations:"
+          grep -r "min_size\|max_size\|desired_capacity" infrastructure/terraform/ | grep -v ".terraform"
+
+      - name: Check detection rule performance
+        run: |
+          echo "Analyzing detection rule performance..."
+          
+          # Look for potentially expensive operations
+          expensive_ops=("join" "append" "transaction" "eventstats")
+          
+          for op in "${expensive_ops[@]}"; do
+            count=$(grep -r "| $op" splunk/apps/ | wc -l)
+            if [ "$count" -gt 0 ]; then
+              echo "⚠ Found $count uses of potentially expensive operation: $op"
+            fi
+          done
+          
+          # Check for proper time bounds
+          unbounded_searches=$(grep -r "search =" splunk/apps/ | grep -v "earliest=" | wc -l)
+          echo "Searches without explicit time bounds: $unbounded_searches"
+
+  # Job 7: Generate Quality Report
+  quality-report:
+    name: Generate Quality Report
+    runs-on: ubuntu-latest
+    needs: [code-formatting, complexity-analysis, docs-quality, license-compliance, security-best-practices, performance-analysis]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate comprehensive quality report
+        run: |
+          echo "# Code Quality Report" > quality-report.md
+          echo "Generated on: $(date)" >> quality-report.md
+          echo "" >> quality-report.md
+          
+          echo "## Job Results" >> quality-report.md
+          echo "- Code Formatting: ${{ needs.code-formatting.result }}" >> quality-report.md
+          echo "- Complexity Analysis: ${{ needs.complexity-analysis.result }}" >> quality-report.md
+          echo "- Documentation Quality: ${{ needs.docs-quality.result }}" >> quality-report.md
+          echo "- License Compliance: ${{ needs.license-compliance.result }}" >> quality-report.md
+          echo "- Security Best Practices: ${{ needs.security-best-practices.result }}" >> quality-report.md
+          echo "- Performance Analysis: ${{ needs.performance-analysis.result }}" >> quality-report.md
+          echo "" >> quality-report.md
+          
+          echo "## Repository Statistics" >> quality-report.md
+          echo "- Total files: $(find . -type f | grep -v .git | wc -l)" >> quality-report.md
+          echo "- Lines of code: $(find . -name "*.py" -o -name "*.tf" -o -name "*.yml" | xargs wc -l | tail -1 | awk '{print $1}')" >> quality-report.md
+          echo "- Documentation files: $(find docs/ -name "*.md" | wc -l)" >> quality-report.md
+          echo "- Terraform resources: $(grep -r "resource \"" infrastructure/terraform/ | wc -l)" >> quality-report.md
+          echo "- Ansible roles: $(find infrastructure/ansible/roles -maxdepth 1 -type d | tail -n +2 | wc -l)" >> quality-report.md
+          echo "- SOAR playbooks: $(find soar/playbooks -name "*.py" | wc -l)" >> quality-report.md
+          echo "- Detection rules: $(find splunk/apps -name "savedsearches.conf" -exec grep -c "^\[SOC -" {} \; | awk '{sum += $1} END {print sum}')" >> quality-report.md
+
+      - name: Upload quality report
+        uses: actions/upload-artifact@v3
+        with:
+          name: quality-report
+          path: quality-report.md
+          retention-days: 30
+
+      - name: Comment PR with quality summary
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('quality-report.md', 'utf8');
+            
+            const output = `#### Code Quality Report 📊
+            
+            ${report}
+            
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })

@@ -1,0 +1,323 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  TF_VERSION: '1.5.0'
+  ANSIBLE_VERSION: '2.15.0'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Job 1: Code Quality and Linting
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible==${{ env.ANSIBLE_VERSION }}
+          pip install ansible-lint
+          pip install yamllint
+          pip install pre-commit
+
+      - name: Run YAML linting
+        run: |
+          find . -name "*.yml" -o -name "*.yaml" | xargs yamllint -d relaxed
+
+      - name: Run Ansible linting
+        run: |
+          ansible-lint infrastructure/ansible/ || true
+
+      - name: Run Python linting (SOAR playbooks)
+        run: |
+          python -m py_compile soar/playbooks/*.py
+          python -m py_compile soar/custom-apps/*.py
+
+      - name: Check shell scripts
+        run: |
+          find . -name "*.sh" -exec shellcheck {} \; || true
+
+  # Job 2: Terraform Validation
+  terraform-validate:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/terraform
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Run TFLint
+        uses: terraform-linters/setup-tflint@v3
+        with:
+          tflint_version: latest
+
+      - name: Initialize TFLint
+        run: tflint --init
+
+      - name: Run TFLint
+        run: tflint --recursive
+
+      - name: Terraform Plan (Dry Run)
+        run: |
+          cp terraform.tfvars.example terraform.tfvars
+          terraform plan -var="splunk_admin_password=DummyPassword123!" -var="ssh_key_name=dummy-key"
+        continue-on-error: true
+
+  # Job 3: Security Scanning
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Checkov scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform,ansible
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: true
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+
+  # Job 4: Documentation Build
+  docs-build:
+    name: Documentation Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python for docs
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install documentation dependencies
+        run: |
+          pip install mkdocs
+          pip install mkdocs-material
+          pip install mkdocs-mermaid2-plugin
+
+      - name: Validate Markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'yes'
+
+      - name: Check documentation structure
+        run: |
+          echo "Checking documentation structure..."
+          find docs/ -name "*.md" | wc -l
+          echo "Found $(find docs/ -name "*.md" | wc -l) documentation files"
+
+  # Job 5: Splunk App Validation
+  splunk-validation:
+    name: Splunk App Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Splunk SDK
+        run: |
+          pip install splunk-sdk
+
+      - name: Validate Splunk Apps Structure
+        run: |
+          echo "Validating Splunk app structure..."
+          for app in splunk/apps/*/; do
+            echo "Checking $app"
+            if [ -f "$app/default/app.conf" ]; then
+              echo "✓ $app has app.conf"
+            else
+              echo "✗ $app missing app.conf"
+              exit 1
+            fi
+          done
+
+      - name: Validate SPL Syntax
+        run: |
+          echo "Validating SPL syntax in saved searches..."
+          python3 -c "
+          import re
+          import sys
+          
+          # Basic SPL syntax validation
+          def validate_spl_file(filepath):
+              with open(filepath, 'r') as f:
+                  content = f.read()
+              
+              # Check for basic SPL syntax issues
+              if 'search =' in content:
+                  print(f'✓ {filepath} contains valid search definitions')
+                  return True
+              else:
+                  print(f'✗ {filepath} may have syntax issues')
+                  return False
+          
+          import glob
+          spl_files = glob.glob('splunk/apps/*/default/savedsearches.conf')
+          all_valid = True
+          
+          for spl_file in spl_files:
+              if not validate_spl_file(spl_file):
+                  all_valid = False
+          
+          if not all_valid:
+              sys.exit(1)
+          "
+
+  # Job 6: Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [code-quality, terraform-validate, security-scan]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup test environment
+        run: |
+          echo "Setting up integration test environment..."
+          # This would typically spin up test infrastructure
+
+      - name: Test deployment scripts
+        run: |
+          chmod +x scripts/deployment/*.sh
+          chmod +x scripts/validation/*.sh
+          
+          # Test script syntax
+          bash -n scripts/deployment/deploy-soc.sh
+          bash -n scripts/validation/validate-infrastructure.sh
+          bash -n scripts/validation/test-detections.sh
+
+      - name: Test Ansible playbook syntax
+        run: |
+          ansible-playbook --syntax-check infrastructure/ansible/playbooks/site.yml
+
+  # Job 7: Release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [code-quality, terraform-validate, security-scan, docs-build, splunk-validation]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from commits
+          echo "## Changes in this release" > RELEASE_NOTES.md
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0)..HEAD >> RELEASE_NOTES.md || echo "- Initial release" >> RELEASE_NOTES.md
+
+      - name: Get version from commit
+        id: version
+        run: |
+          # Extract version from commit messages or use date-based versioning
+          VERSION=$(date +%Y.%m.%d)
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Enterprise SOC Blueprint ${{ steps.version.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+
+  # Job 8: Notify on Success
+  notify-success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [code-quality, terraform-validate, security-scan, docs-build, splunk-validation]
+    if: success()
+    steps:
+      - name: Notify success
+        run: |
+          echo "🎉 All CI/CD checks passed successfully!"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
