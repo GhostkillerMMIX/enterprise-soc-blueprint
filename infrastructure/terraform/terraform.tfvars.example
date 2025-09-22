@@ -1,0 +1,75 @@
+# Enterprise SOC Terraform Variables Example
+# Copy this file to terraform.tfvars and customize for your environment
+
+# General Configuration
+environment = "prod"
+owner = "security-team"
+aws_region = "us-east-1"
+project_name = "enterprise-soc"
+
+# Network Configuration
+vpc_cidr = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+public_subnet_cidrs = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+# Splunk Configuration
+splunk_indexer_count = 3
+splunk_indexer_instance_type = "c5.4xlarge"  # 16 vCPU, 32GB RAM
+splunk_search_head_count = 2
+splunk_search_head_instance_type = "c5.2xlarge"  # 8 vCPU, 16GB RAM
+splunk_heavy_forwarder_count = 1
+splunk_heavy_forwarder_instance_type = "c5.large"  # 2 vCPU, 4GB RAM
+
+# SOAR Configuration
+soar_instance_type = "c5.2xlarge"  # 8 vCPU, 16GB RAM
+soar_instance_count = 1
+
+# Zeek Configuration
+zeek_instance_type = "c5.xlarge"  # 4 vCPU, 8GB RAM
+zeek_instance_count = 1
+
+# Storage Configuration (GB)
+indexer_hot_storage_size = 1000
+indexer_warm_storage_size = 2000
+
+# Security Configuration
+allowed_cidr_blocks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+ssh_key_name = "your-key-pair-name"  # Replace with your AWS key pair name
+
+# Splunk Admin Password
+# IMPORTANT: Use a strong password and consider using AWS Secrets Manager in production
+splunk_admin_password = "ChangeThisToASecurePassword123!"
+
+# Monitoring Configuration
+enable_monitoring = true
+enable_logging = true
+backup_retention_days = 30
+
+# Cost Optimization
+enable_spot_instances = false
+auto_scaling_enabled = true
+
+# Notification Configuration (Optional)
+email_notifications = ["security-team@your-company.com"]
+slack_webhook_url = ""  # Add your Slack webhook URL for notifications
+
+# Example configurations for different deployment sizes:
+
+# Small Environment (< 1K endpoints, 50-100 GB/day)
+# splunk_indexer_count = 1
+# splunk_indexer_instance_type = "c5.2xlarge"
+# splunk_search_head_count = 1
+# splunk_search_head_instance_type = "c5.large"
+
+# Medium Environment (1K-5K endpoints, 200-500 GB/day)
+# splunk_indexer_count = 3
+# splunk_indexer_instance_type = "c5.4xlarge"
+# splunk_search_head_count = 2
+# splunk_search_head_instance_type = "c5.2xlarge"
+
+# Large Environment (> 5K endpoints, 1TB+ /day)
+# splunk_indexer_count = 6
+# splunk_indexer_instance_type = "c5.9xlarge"
+# splunk_search_head_count = 3
+# splunk_search_head_instance_type = "c5.4xlarge"

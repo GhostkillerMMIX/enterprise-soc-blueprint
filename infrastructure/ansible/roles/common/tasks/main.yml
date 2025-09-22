@@ -1,0 +1,202 @@
+---
+# Common tasks for all SOC infrastructure
+
+- name: Update system packages
+  yum:
+    name: "*"
+    state: latest
+    update_cache: yes
+  become: yes
+
+- name: Install common packages
+  yum:
+    name: "{{ common_packages }}"
+    state: present
+  become: yes
+
+- name: Configure timezone
+  timezone:
+    name: UTC
+  become: yes
+
+- name: Install and configure NTP
+  block:
+    - name: Install chrony
+      yum:
+        name: chrony
+        state: present
+      become: yes
+
+    - name: Configure chrony
+      template:
+        src: chrony.conf.j2
+        dest: /etc/chrony.conf
+        backup: yes
+      become: yes
+      notify: restart chrony
+
+    - name: Start and enable chrony
+      systemd:
+        name: chronyd
+        state: started
+        enabled: yes
+      become: yes
+
+- name: Configure SSH hardening
+  block:
+    - name: Backup original sshd_config
+      copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.backup
+        remote_src: yes
+      become: yes
+
+    - name: Configure SSH security
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        backup: yes
+      become: yes
+      loop:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+        - { regexp: '^#?AuthorizedKeysFile', line: 'AuthorizedKeysFile .ssh/authorized_keys' }
+        - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 3' }
+        - { regexp: '^#?ClientAliveInterval', line: 'ClientAliveInterval 300' }
+        - { regexp: '^#?ClientAliveCountMax', line: 'ClientAliveCountMax 2' }
+      notify: restart ssh
+  when: disable_root_login | bool
+
+- name: Install and configure fail2ban
+  block:
+    - name: Install fail2ban
+      yum:
+        name: fail2ban
+        state: present
+      become: yes
+
+    - name: Configure fail2ban
+      template:
+        src: jail.local.j2
+        dest: /etc/fail2ban/jail.local
+      become: yes
+      notify: restart fail2ban
+
+    - name: Start and enable fail2ban
+      systemd:
+        name: fail2ban
+        state: started
+        enabled: yes
+      become: yes
+  when: enable_fail2ban | bool
+
+- name: Configure firewall
+  block:
+    - name: Install firewalld
+      yum:
+        name: firewalld
+        state: present
+      become: yes
+
+    - name: Start and enable firewalld
+      systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+      become: yes
+
+    - name: Configure basic firewall rules
+      firewalld:
+        service: ssh
+        permanent: yes
+        state: enabled
+        immediate: yes
+      become: yes
+  when: enable_firewall | bool
+
+- name: Install AWS CloudWatch agent
+  block:
+    - name: Download CloudWatch agent
+      get_url:
+        url: "https://amazoncloudwatch-agent.s3.amazonaws.com/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm"
+        dest: /tmp/amazon-cloudwatch-agent.rpm
+      become: yes
+
+    - name: Install CloudWatch agent
+      yum:
+        name: /tmp/amazon-cloudwatch-agent.rpm
+        state: present
+      become: yes
+
+    - name: Create CloudWatch agent config
+      template:
+        src: cloudwatch-config.json.j2
+        dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+      become: yes
+      notify: restart cloudwatch-agent
+  when: enable_cloudwatch_agent | bool
+
+- name: Configure log rotation
+  template:
+    src: logrotate.conf.j2
+    dest: /etc/logrotate.d/soc-logs
+  become: yes
+
+- name: Create backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+  loop:
+    - /opt/backups
+    - /opt/backups/configs
+    - /opt/backups/logs
+
+- name: Install backup script
+  template:
+    src: backup.sh.j2
+    dest: /opt/backups/backup.sh
+    mode: '0755'
+  become: yes
+
+- name: Schedule backup cron job
+  cron:
+    name: "SOC Infrastructure Backup"
+    minute: "0"
+    hour: "2"
+    job: "/opt/backups/backup.sh"
+    user: root
+  become: yes
+
+- name: Create monitoring user
+  user:
+    name: monitoring
+    system: yes
+    shell: /bin/bash
+    home: /home/monitoring
+    create_home: yes
+  become: yes
+
+- name: Install monitoring scripts
+  template:
+    src: "{{ item }}.j2"
+    dest: "/home/monitoring/{{ item }}"
+    owner: monitoring
+    group: monitoring
+    mode: '0755'
+  become: yes
+  loop:
+    - health_check.sh
+    - metrics_collector.py
+
+- name: Configure rsyslog for centralized logging
+  template:
+    src: rsyslog.conf.j2
+    dest: /etc/rsyslog.d/99-soc.conf
+  become: yes
+  notify: restart rsyslog

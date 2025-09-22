@@ -1,0 +1,7 @@
+indicator,type,source,first_seen,last_seen,confidence,description
+192.168.1.100,ip,internal_honeypot,2024-01-01,2024-12-31,high,Internal honeypot IP
+malicious-domain.com,domain,threat_feed,2024-01-15,2024-12-31,medium,Known malicious domain
+198.51.100.50,ip,abuse_ipdb,2024-02-01,2024-12-31,high,Known botnet C2 IP
+evil.exe,hash,virustotal,2024-01-20,2024-12-31,high,Known malware hash
+phishing-site.net,domain,phishtank,2024-03-01,2024-12-31,medium,Phishing domain
+10.0.0.1,ip,internal_scan,2024-01-01,2024-12-31,low,Internal scanner IP

@@ -1,0 +1,80 @@
+MIT License
+
+Copyright (c) 2024 Enterprise SOC Implementation Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-Party Components
+
+This project includes or references the following third-party components:
+
+### Terraform Modules
+- **AWS Provider**: Mozilla Public License 2.0
+- **Random Provider**: Mozilla Public License 2.0
+- **TLS Provider**: Mozilla Public License 2.0
+
+### Ansible Collections
+- **community.general**: GNU General Public License v3.0 or later
+- **ansible.posix**: GNU General Public License v3.0 or later
+
+### Detection Rules
+- **MITRE ATT&CK Framework**: Apache License 2.0
+- **Atomic Red Team**: MIT License (referenced for testing)
+
+### Documentation
+- **MITRE ATT&CK Techniques**: Used under fair use for educational purposes
+- **Splunk Documentation**: Referenced under fair use
+
+### Security Tools Integration
+- **Splunk**: Commercial license required for production use
+- **SOAR Platforms**: Commercial licenses may be required
+- **Threat Intelligence Feeds**: Various licenses apply
+
+## Security Notice
+
+This project is designed for educational and professional security operations purposes. Users are responsible for:
+
+1. **Compliance**: Ensuring all deployments comply with applicable laws and regulations
+2. **Licensing**: Obtaining appropriate licenses for commercial tools and services
+3. **Security**: Implementing appropriate security controls for their environment
+4. **Privacy**: Protecting personal and sensitive data according to applicable privacy laws
+
+## Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. The contributors and maintainers of this project:
+
+- Make no representations or warranties regarding the security, reliability, or fitness for any particular purpose
+- Are not responsible for any damages, data loss, or security incidents that may result from use of this software
+- Recommend thorough testing and security review before production deployment
+- Advise users to comply with all applicable laws, regulations, and organizational policies
+
+Users assume all risks associated with the use of this software and are solely responsible for determining its appropriateness for their use case.
+
+## Export Control Notice
+
+This software may be subject to export control laws and regulations. Users are responsible for compliance with all applicable export control laws and regulations, including but not limited to the Export Administration Regulations (EAR) and the International Traffic in Arms Regulations (ITAR).
+
+## Contact
+
+For questions regarding licensing or legal compliance, please contact:
+- Project Maintainers: [GitHub Issues](https://github.com/your-org/enterprise-soc-blueprint/issues)
+- Security Concerns: security@company.com
+- Legal Questions: legal@company.com

@@ -1,0 +1,103 @@
+---
+# Splunk-specific variables
+
+# Splunk installation
+splunk_version: "9.1.2"
+splunk_build: "b6b9c8185839"
+splunk_download_url: "https://download.splunk.com/products/splunk/releases/{{ splunk_version }}/linux"
+splunk_package: "splunk-{{ splunk_version }}-{{ splunk_build }}-Linux-x86_64.tgz"
+
+# Splunk forwarder
+splunkforwarder_version: "9.1.2"
+splunkforwarder_build: "b6b9c8185839"
+splunkforwarder_download_url: "https://download.splunk.com/products/universalforwarder/releases/{{ splunkforwarder_version }}/linux"
+splunkforwarder_package: "splunkforwarder-{{ splunkforwarder_version }}-{{ splunkforwarder_build }}-Linux-x86_64.tgz"
+
+# Splunk user and directories
+splunk_user: "splunk"
+splunk_group: "splunk"
+splunk_home: "/opt/splunk"
+splunk_db: "/opt/splunk/var/lib/splunk"
+splunk_etc: "/opt/splunk/etc"
+
+# Splunk network settings
+splunk_web_port: 8000
+splunk_mgmt_port: 8089
+splunk_kvstore_port: 8191
+splunk_replication_port: 9887
+splunk_receiver_port: 9997
+splunk_hec_port: 8088
+
+# Clustering
+splunk_cluster_label: "{{ project_name }}_cluster"
+splunk_cluster_master: "cluster-master.{{ project_name }}.local"
+splunk_deployment_server: "deployment-server.{{ project_name }}.local"
+splunk_license_master: "license-master.{{ project_name }}.local"
+
+# Indexing
+splunk_max_data_size: "auto_high_volume"
+splunk_max_hot_buckets: 10
+splunk_max_warm_db_count: 300
+splunk_replication_factor: 2
+splunk_search_factor: 2
+
+# Security
+splunk_ssl_enabled: true
+splunk_ssl_cert: "{{ ssl_cert_path }}/splunk.crt"
+splunk_ssl_key: "{{ ssl_key_path }}/splunk.key"
+
+# Apps and add-ons
+splunk_base_apps:
+  - "Splunk_TA_nix"
+  - "Splunk_TA_windows"
+  - "Splunk_TA_aws"
+  - "SA-cim_vladiator"
+  - "Splunk_ML_Toolkit"
+
+# Index configuration
+splunk_indexes:
+  - name: "os"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 10
+    max_warm_db_count: 300
+  - name: "winevent"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 15
+    max_warm_db_count: 400
+  - name: "network"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 20
+    max_warm_db_count: 500
+  - name: "auth"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 10
+    max_warm_db_count: 200
+  - name: "proxy"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 15
+    max_warm_db_count: 300
+  - name: "dns"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 10
+    max_warm_db_count: 200
+  - name: "edr"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 15
+    max_warm_db_count: 400
+  - name: "cloud_aws"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 10
+    max_warm_db_count: 300
+  - name: "cloud_azure"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 10
+    max_warm_db_count: 300
+  - name: "cloud_gcp"
+    max_data_size: "auto_high_volume"
+    max_hot_buckets: 10
+    max_warm_db_count: 300
+
+# Performance tuning
+splunk_max_searches_per_cpu: 1
+splunk_max_concurrent_searches: 20
+splunk_search_head_pooling: true

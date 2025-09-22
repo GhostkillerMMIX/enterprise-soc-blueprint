@@ -1,0 +1,199 @@
+<dashboard version="1.1" theme="dark">
+  <label>SOC Executive Dashboard</label>
+  <description>Executive-level security metrics and KPIs</description>
+  
+  <row>
+    <panel>
+      <title>Security Posture Overview</title>
+      <single>
+        <title>MTTD (Mean Time to Detection)</title>
+        <search>
+          <query>
+            | from datamodel:"Notable"."All_Notable" 
+            | eval detection_time=_time-first_seen_time 
+            | stats avg(detection_time) as avg_mttd 
+            | eval avg_mttd_minutes=round(avg_mttd/60,2) 
+            | fields avg_mttd_minutes
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[5,10,15]</option>
+        <option name="underLabel">Minutes</option>
+        <option name="unit">min</option>
+      </single>
+    </panel>
+    
+    <panel>
+      <title>MTTR (Mean Time to Response)</title>
+      <single>
+        <search>
+          <query>
+            | from datamodel:"Notable"."All_Notable" 
+            | eval response_time=resolved_time-_time 
+            | stats avg(response_time) as avg_mttr 
+            | eval avg_mttr_minutes=round(avg_mttr/60,2) 
+            | fields avg_mttr_minutes
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[30,60,120]</option>
+        <option name="underLabel">Minutes</option>
+        <option name="unit">min</option>
+      </single>
+    </panel>
+    
+    <panel>
+      <title>Active Incidents</title>
+      <single>
+        <search>
+          <query>
+            | from datamodel:"Notable"."All_Notable" 
+            | search status="open" OR status="in_progress" 
+            | stats count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[5,15,25]</option>
+      </single>
+    </panel>
+    
+    <panel>
+      <title>False Positive Rate</title>
+      <single>
+        <search>
+          <query>
+            | from datamodel:"Notable"."All_Notable" 
+            | stats count(eval(disposition="false_positive")) as fp_count count as total_count 
+            | eval fp_rate=round((fp_count/total_count)*100,2) 
+            | fields fp_rate
+          </query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[5,10,20]</option>
+        <option name="underLabel">Percent</option>
+        <option name="unit">%</option>
+      </single>
+    </panel>
+  </row>
+  
+  <row>
+    <panel>
+      <title>Incidents by Severity (Last 30 Days)</title>
+      <chart>
+        <search>
+          <query>
+            | from datamodel:"Notable"."All_Notable" 
+            | timechart span=1d count by urgency
+          </query>
+          <earliest>-30d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"critical":"#D93F3C","high":"#F58F39","medium":"#F7BC38","low":"#65A637"}</option>
+      </chart>
+    </panel>
+    
+    <panel>
+      <title>Top MITRE ATT&amp;CK Techniques</title>
+      <chart>
+        <search>
+          <query>
+            | from datamodel:"Risk"."All_Risk" 
+            | rex field=risk_rule "(?&lt;technique&gt;T\d{4}(\.\d{3})?)" 
+            | stats count by technique 
+            | sort -count 
+            | head 10
+          </query>
+          <earliest>-30d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+  </row>
+  
+  <row>
+    <panel>
+      <title>Security Events Volume</title>
+      <chart>
+        <search>
+          <query>
+            | tstats count where index=* by _time span=1h 
+            | timechart span=1h sum(count) as total_events
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    
+    <panel>
+      <title>Top Risk Objects</title>
+      <table>
+        <search>
+          <query>
+            | from datamodel:"Risk"."All_Risk" 
+            | stats sum(risk_score) as total_risk_score dc(risk_rule) as unique_rules by risk_object 
+            | sort -total_risk_score 
+            | head 10 
+            | eval risk_level=case(total_risk_score>=200,"Critical",total_risk_score>=100,"High",total_risk_score>=50,"Medium",1=1,"Low")
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <format type="color" field="risk_level">
+          <colorPalette type="map">{"Critical":"#D93F3C","High":"#F58F39","Medium":"#F7BC38","Low":"#65A637"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  
+  <row>
+    <panel>
+      <title>Threat Intelligence Matches (Last 7 Days)</title>
+      <table>
+        <search>
+          <query>
+            | tstats count from datamodel=Network_Traffic.All_Traffic by All_Traffic.src, All_Traffic.dest 
+            | lookup threat_intel_iocs.csv indicator as All_Traffic.src OUTPUT type as src_threat_type, confidence as src_confidence 
+            | lookup threat_intel_iocs.csv indicator as All_Traffic.dest OUTPUT type as dest_threat_type, confidence as dest_confidence 
+            | where isnotnull(src_threat_type) OR isnotnull(dest_threat_type) 
+            | eval threat_type=coalesce(src_threat_type,dest_threat_type), confidence=coalesce(src_confidence,dest_confidence) 
+            | sort -count 
+            | head 20
+          </query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">cell</option>
+      </table>
+    </panel>
+  </row>
+  
+</dashboard>

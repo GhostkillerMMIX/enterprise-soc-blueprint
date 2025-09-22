@@ -1,0 +1,262 @@
+---
+# Splunk Indexer installation and configuration
+
+- name: Create splunk user
+  user:
+    name: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    system: yes
+    shell: /bin/bash
+    home: "{{ splunk_home }}"
+    create_home: no
+  become: yes
+
+- name: Create splunk group
+  group:
+    name: "{{ splunk_group }}"
+    system: yes
+  become: yes
+
+- name: Create Splunk directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    mode: '0755'
+  become: yes
+  loop:
+    - "{{ splunk_home }}"
+    - "{{ splunk_db }}"
+    - /opt/splunk/var/lib/splunk/hot
+    - /opt/splunk/var/lib/splunk/warm
+    - /opt/splunk/var/lib/splunk/cold
+    - /opt/splunk/var/log/splunk
+
+- name: Mount additional storage for indexer data
+  block:
+    - name: Create filesystem on hot storage volume
+      filesystem:
+        fstype: xfs
+        dev: /dev/xvdb
+      become: yes
+
+    - name: Create filesystem on warm storage volume
+      filesystem:
+        fstype: xfs
+        dev: /dev/xvdc
+      become: yes
+
+    - name: Mount hot storage
+      mount:
+        path: /opt/splunk/var/lib/splunk/hot
+        src: /dev/xvdb
+        fstype: xfs
+        opts: defaults,noatime
+        state: mounted
+      become: yes
+
+    - name: Mount warm storage
+      mount:
+        path: /opt/splunk/var/lib/splunk/warm
+        src: /dev/xvdc
+        fstype: xfs
+        opts: defaults,noatime
+        state: mounted
+      become: yes
+
+    - name: Set ownership on mounted directories
+      file:
+        path: "{{ item }}"
+        owner: "{{ splunk_user }}"
+        group: "{{ splunk_group }}"
+        recurse: yes
+      become: yes
+      loop:
+        - /opt/splunk/var/lib/splunk/hot
+        - /opt/splunk/var/lib/splunk/warm
+
+- name: Check if Splunk is already installed
+  stat:
+    path: "{{ splunk_home }}/bin/splunk"
+  register: splunk_installed
+
+- name: Download and install Splunk
+  block:
+    - name: Download Splunk package
+      get_url:
+        url: "{{ splunk_download_url }}/{{ splunk_package }}"
+        dest: "/tmp/{{ splunk_package }}"
+        timeout: 300
+      become: yes
+
+    - name: Extract Splunk package
+      unarchive:
+        src: "/tmp/{{ splunk_package }}"
+        dest: /opt
+        remote_src: yes
+        owner: "{{ splunk_user }}"
+        group: "{{ splunk_group }}"
+      become: yes
+
+    - name: Set ownership on Splunk directory
+      file:
+        path: "{{ splunk_home }}"
+        owner: "{{ splunk_user }}"
+        group: "{{ splunk_group }}"
+        recurse: yes
+      become: yes
+
+    - name: Clean up downloaded package
+      file:
+        path: "/tmp/{{ splunk_package }}"
+        state: absent
+      become: yes
+  when: not splunk_installed.stat.exists
+
+- name: Get secrets from AWS Secrets Manager
+  set_fact:
+    splunk_secrets: "{{ lookup('aws_secret', project_name + '-splunk-secrets', region=aws_region) | from_json }}"
+
+- name: Configure Splunk server.conf
+  template:
+    src: server.conf.j2
+    dest: "{{ splunk_etc }}/system/local/server.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    mode: '0600'
+    backup: yes
+  become: yes
+  notify: restart splunk
+
+- name: Configure Splunk inputs.conf
+  template:
+    src: inputs.conf.j2
+    dest: "{{ splunk_etc }}/system/local/inputs.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    mode: '0600'
+    backup: yes
+  become: yes
+  notify: restart splunk
+
+- name: Configure Splunk indexes.conf
+  template:
+    src: indexes.conf.j2
+    dest: "{{ splunk_etc }}/system/local/indexes.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    mode: '0600'
+    backup: yes
+  become: yes
+  notify: restart splunk
+
+- name: Configure Splunk outputs.conf (for cold storage)
+  template:
+    src: outputs.conf.j2
+    dest: "{{ splunk_etc }}/system/local/outputs.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    mode: '0600'
+    backup: yes
+  become: yes
+  notify: restart splunk
+
+- name: Configure Splunk web.conf
+  template:
+    src: web.conf.j2
+    dest: "{{ splunk_etc }}/system/local/web.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_group }}"
+    mode: '0600'
+    backup: yes
+  become: yes
+  notify: restart splunk
+
+- name: Start Splunk for first time and accept license
+  command: "{{ splunk_home }}/bin/splunk start --accept-license --answer-yes --no-prompt"
+  become: yes
+  become_user: "{{ splunk_user }}"
+  when: not splunk_installed.stat.exists
+
+- name: Set Splunk admin password
+  command: >
+    {{ splunk_home }}/bin/splunk edit user admin 
+    -password {{ splunk_secrets.admin_password }} 
+    -auth admin:changeme
+  become: yes
+  become_user: "{{ splunk_user }}"
+  when: not splunk_installed.stat.exists
+  no_log: true
+
+- name: Enable Splunk to start at boot
+  command: "{{ splunk_home }}/bin/splunk enable boot-start -systemd-managed 1 -user {{ splunk_user }}"
+  become: yes
+  when: not splunk_installed.stat.exists
+
+- name: Configure firewall for Splunk indexer
+  firewalld:
+    port: "{{ item }}/tcp"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  become: yes
+  loop:
+    - "{{ splunk_mgmt_port }}"
+    - "{{ splunk_replication_port }}"
+    - "{{ splunk_receiver_port }}"
+  when: enable_firewall | bool
+
+- name: Configure Splunk clustering
+  block:
+    - name: Configure as cluster peer
+      command: >
+        {{ splunk_home }}/bin/splunk edit cluster-config 
+        -mode peer 
+        -master_uri https://{{ splunk_cluster_master }}:{{ splunk_mgmt_port }}
+        -replication_port {{ splunk_replication_port }}
+        -secret {{ splunk_secrets.cluster_key }}
+        -auth admin:{{ splunk_secrets.admin_password }}
+      become: yes
+      become_user: "{{ splunk_user }}"
+      no_log: true
+
+    - name: Restart Splunk to apply cluster configuration
+      systemd:
+        name: Splunkd
+        state: restarted
+      become: yes
+  when: splunk_cluster_master is defined
+
+- name: Install CloudWatch monitoring for Splunk
+  template:
+    src: splunk-monitoring.py.j2
+    dest: /home/monitoring/splunk-monitoring.py
+    owner: monitoring
+    group: monitoring
+    mode: '0755'
+  become: yes
+
+- name: Schedule Splunk monitoring
+  cron:
+    name: "Splunk Indexer Monitoring"
+    minute: "*/5"
+    job: "/home/monitoring/splunk-monitoring.py"
+    user: monitoring
+  become: yes
+
+- name: Create backup script for Splunk configuration
+  template:
+    src: backup-splunk-config.sh.j2
+    dest: /opt/backups/backup-splunk-config.sh
+    mode: '0755'
+  become: yes
+
+- name: Schedule Splunk config backup
+  cron:
+    name: "Splunk Configuration Backup"
+    minute: "0"
+    hour: "3"
+    job: "/opt/backups/backup-splunk-config.sh"
+    user: root
+  become: yes

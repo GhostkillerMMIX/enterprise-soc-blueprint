@@ -1,0 +1,26 @@
+---
+# Splunk Indexer handlers
+
+- name: restart splunk
+  systemd:
+    name: Splunkd
+    state: restarted
+  become: yes
+
+- name: reload splunk
+  systemd:
+    name: Splunkd
+    state: reloaded
+  become: yes
+
+- name: stop splunk
+  systemd:
+    name: Splunkd
+    state: stopped
+  become: yes
+
+- name: start splunk
+  systemd:
+    name: Splunkd
+    state: started
+  become: yes

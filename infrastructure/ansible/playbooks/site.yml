@@ -1,0 +1,91 @@
+---
+# Main playbook for Enterprise SOC deployment
+
+- name: Deploy common configuration to all SOC infrastructure
+  hosts: soc
+  become: yes
+  roles:
+    - common
+  tags:
+    - common
+    - base
+
+- name: Deploy Splunk Indexers
+  hosts: splunk_indexers
+  become: yes
+  roles:
+    - splunk-indexer
+  tags:
+    - splunk
+    - indexers
+
+- name: Deploy Splunk Search Heads
+  hosts: splunk_search_heads
+  become: yes
+  roles:
+    - splunk-search-head
+  tags:
+    - splunk
+    - search_heads
+
+- name: Deploy Splunk Heavy Forwarders
+  hosts: splunk_heavy_forwarders
+  become: yes
+  roles:
+    - splunk-heavy-forwarder
+  tags:
+    - splunk
+    - forwarders
+
+- name: Deploy SOAR Platform
+  hosts: soar_servers
+  become: yes
+  roles:
+    - soar
+  tags:
+    - soar
+
+- name: Deploy Zeek Sensors
+  hosts: zeek_sensors
+  become: yes
+  roles:
+    - zeek-sensor
+  tags:
+    - zeek
+    - sensors
+
+- name: Post-deployment configuration
+  hosts: soc
+  become: yes
+  tasks:
+    - name: Verify all services are running
+      systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - chronyd
+        - rsyslog
+        - amazon-cloudwatch-agent
+      when: enable_cloudwatch_agent | bool
+
+    - name: Run health checks
+      script: /home/monitoring/health_check.sh
+      register: health_check_result
+
+    - name: Display health check results
+      debug:
+        var: health_check_result.stdout_lines
+
+    - name: Send deployment notification
+      uri:
+        url: "{{ slack_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          text: "SOC Infrastructure deployment completed successfully on {{ inventory_hostname }}"
+        status_code: 200
+      when: slack_webhook_url is defined and slack_webhook_url != ""
+      delegate_to: localhost
+  tags:
+    - post_deploy
+    - verification

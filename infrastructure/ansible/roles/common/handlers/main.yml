@@ -1,0 +1,38 @@
+---
+# Common handlers for all roles
+
+- name: restart ssh
+  systemd:
+    name: sshd
+    state: restarted
+  become: yes
+
+- name: restart chrony
+  systemd:
+    name: chronyd
+    state: restarted
+  become: yes
+
+- name: restart fail2ban
+  systemd:
+    name: fail2ban
+    state: restarted
+  become: yes
+
+- name: restart cloudwatch-agent
+  systemd:
+    name: amazon-cloudwatch-agent
+    state: restarted
+  become: yes
+
+- name: restart rsyslog
+  systemd:
+    name: rsyslog
+    state: restarted
+  become: yes
+
+- name: reload firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+  become: yes
